@@ -1,0 +1,30 @@
+pig set up for project
+----open new terminal for pig ---
+1.pig -x local
+grunt>
+
+--create table for that and load data from local to pig storage--
+-- 1. Load data
+WebServerLogs_raw = LOAD '/home/hdp/Downloads/web_server_logs_5000.csv' 
+    USING PigStorage(',') 
+    AS (
+        ip_address:chararray,
+        timestamp:chararray,
+        log_date:chararray,
+        hour:int,
+        http_method:chararray,
+        request_url:chararray,
+        status_code:int,
+        bytes_transferred:long,
+        referrer:chararray,
+        user_agent:chararray
+    );
+
+-- 2. Filter out CSV header
+WebServerLogs = FILTER WebServerLogs_raw BY ip_address != 'ip_address';
+
+---describe the table---
+DESCRIBE WebServerLogs;
+-----to print first 10 logs---
+first_10_logs = LIMIT WebServerLogs 10;
+DUMP first_10_logs;

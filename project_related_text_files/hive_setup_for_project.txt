@@ -1,0 +1,48 @@
+set up of hdfs:
+1.start-all.sh
+2.jps
+3.download that web_server_logs_5000.csv
+
+path will be : /home/hdp/Downloads/web_server_logs_5000.csv
+
+---->create a directory in hdfs:
+hadoop fs -mkdir /project
+
+--->load data from local to hadoop:
+hadoop fs -put /home/hdp/Downloads/web_server_logs_5000.csv /project
+
+
+(or)
+
+
+hadoop fs -copyFromLocal /home/hdp/Downloads/web_server_logs_5000.csv /project
+
+----open new terminal for hive---
+1.hive
+hive>
+show databases;
+create database project;
+use project;
+create table WebServerLogs(
+ip_address STRING,
+time_of_using TIMESTAMP,
+log_date DATE,
+hour INT,
+http_method STRING,
+request_url STRING,
+status_code INT,
+bytes_transferred BIGINT,
+referrer STRING,
+user_agent STRING
+)
+ROW FORMAT DELIMITED
+fields TERMINATED BY ','
+STORED AS TEXTFILE
+TBLPROPERTIES("skip.header.line.count"="1");
+
+
+---LOAD data from hadoop into table---
+LOAD DATA INPATH '/project/web_server_logs_5000.csv' INTO TABLE WebServerLogs;
+
+----see table---
+SELECT * FROM WebServerLogs LIMIT 10;

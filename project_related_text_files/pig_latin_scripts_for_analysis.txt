@@ -1,0 +1,166 @@
+-- ============================================================================
+-- LOAD & PREPROCESS DATA (Excluding CSV Header)
+-- ============================================================================
+WebServerLogs_raw = LOAD '/home/hdp/Downloads/web_server_logs_5000.csv' 
+    USING PigStorage(',') 
+    AS (
+        ip_address:chararray,
+        timestamp:chararray,
+        log_date:chararray,
+        hour:int,
+        http_method:chararray,
+        request_url:chararray,
+        status_code:int,
+        bytes_transferred:long,
+        referrer:chararray,
+        user_agent:chararray
+    );
+
+WebServerLogs = FILTER WebServerLogs_raw BY ip_address != 'ip_address';
+
+-- ============================================================================
+-- 1 - 3. REQUESTS BY DATE (TOTAL, MIN, MAX)
+-- ============================================================================
+grp_date = GROUP WebServerLogs BY log_date;
+req_per_date = FOREACH grp_date GENERATE group AS log_date, COUNT(WebServerLogs) AS total_requests;
+DUMP req_per_date;
+
+ord_date_asc = ORDER req_per_date BY total_requests ASC;
+least_req_date = LIMIT ord_date_asc 1;
+DUMP least_req_date;
+
+ord_date_desc = ORDER req_per_date BY total_requests DESC;
+most_req_date = LIMIT ord_date_desc 1;
+DUMP most_req_date;
+
+-- ============================================================================
+-- 4 - 7. REQUESTS BY HOUR & PEAK HOURS
+-- ============================================================================
+grp_date_hour = GROUP WebServerLogs BY (log_date, hour);
+req_date_hour = FOREACH grp_date_hour GENERATE group.log_date AS log_date, group.hour AS hour, COUNT(WebServerLogs) AS total_requests;
+DUMP req_date_hour;
+
+grp_hour = GROUP WebServerLogs BY hour;
+req_per_hour = FOREACH grp_hour GENERATE group AS hour, COUNT(WebServerLogs) AS total_requests;
+DUMP req_per_hour;
+
+ord_hour_desc = ORDER req_per_hour BY total_requests DESC;
+top_5_hours = LIMIT ord_hour_desc 5;
+DUMP top_5_hours;
+
+-- ============================================================================
+-- 8 & 9. TIME OF DAY CLASSIFICATION (MORNING, AFTERNOON, EVENING, NIGHT)
+-- ============================================================================
+classified_time = FOREACH WebServerLogs GENERATE 
+    ((hour >= 5 AND hour <= 11) ? 'Morning' : 
+     ((hour >= 12 AND hour <= 16) ? 'Afternoon' : 
+      ((hour >= 17 AND hour <= 20) ? 'Evening' : 'Night'))) AS time_of_day;
+
+grp_time = GROUP classified_time BY time_of_day;
+req_per_time = FOREACH grp_time GENERATE group AS time_of_day, COUNT(classified_time) AS total_requests;
+DUMP req_per_time;
+
+ord_time_asc = ORDER req_per_time BY total_requests ASC;
+least_time = LIMIT ord_time_asc 1;
+DUMP least_time;
+
+ord_time_desc = ORDER req_per_time BY total_requests DESC;
+most_time = LIMIT ord_time_desc 1;
+DUMP most_time;
+
+-- ============================================================================
+-- 10. UNIQUE VISITORS (REQUESTS PER IP)
+-- ============================================================================
+grp_ip = GROUP WebServerLogs BY ip_address;
+req_per_ip = FOREACH grp_ip GENERATE group AS user_id, COUNT(WebServerLogs) AS total_requests;
+DUMP req_per_ip;
+
+-- ============================================================================
+-- 11. PAGES AND USER-AGENT AGGREGATIONS
+-- ============================================================================
+grp_page = GROUP WebServerLogs BY request_url;
+req_per_page = FOREACH grp_page GENERATE group AS page, COUNT(WebServerLogs) AS total_requests;
+
+ord_page_desc = ORDER req_per_page BY total_requests DESC;
+top_5_pages = LIMIT ord_page_desc 5;
+DUMP top_5_pages;
+
+ord_page_asc = ORDER req_per_page BY total_requests ASC;
+least_5_pages = LIMIT ord_page_asc 5;
+DUMP least_5_pages;
+
+grp_ua = GROUP WebServerLogs BY user_agent;
+req_per_ua = FOREACH grp_ua GENERATE group AS user_agent, COUNT(WebServerLogs) AS total_requests;
+
+ord_ua_desc = ORDER req_per_ua BY total_requests DESC;
+top_2_ua = LIMIT ord_ua_desc 2;
+DUMP top_2_ua;
+
+ord_ua_asc = ORDER req_per_ua BY total_requests ASC;
+least_2_ua = LIMIT ord_ua_asc 2;
+DUMP least_2_ua;
+
+-- ============================================================================
+-- 12. DEVICE TYPE CLASSIFICATION (FIXED)
+-- ============================================================================
+classified_device = FOREACH WebServerLogs GENERATE 
+    ((LOWER(user_agent) MATCHES '.*bot.*' OR LOWER(user_agent) MATCHES '.*spider.*') ? 'bot / crawler' :
+     ((LOWER(user_agent) MATCHES '.*mobile.*' OR LOWER(user_agent) MATCHES '.*android.*' OR LOWER(user_agent) MATCHES '.*iphone.*') ? 'Mobile' :
+      ((LOWER(user_agent) MATCHES '.*tablet.*' OR LOWER(user_agent) MATCHES '.*ipad.*') ? 'Tablet' :
+       ((LOWER(user_agent) MATCHES '.*window.*' OR LOWER(user_agent) MATCHES '.*linux.*' OR LOWER(user_agent) MATCHES '.*macintosh.*' OR LOWER(user_agent) MATCHES '.*x11.*') ? 'Desktop' : 'unknown')))) AS device_type;
+
+grp_device = GROUP classified_device BY device_type;
+req_per_device = FOREACH grp_device GENERATE group AS device_type, COUNT(classified_device) AS total_requests;
+DUMP req_per_device;
+
+ord_dev_desc = ORDER req_per_device BY total_requests DESC;
+top_device = LIMIT ord_dev_desc 1;
+DUMP top_device;
+
+ord_dev_asc = ORDER req_per_device BY total_requests ASC;
+least_device = LIMIT ord_dev_asc 1;
+DUMP least_device;
+
+-- ============================================================================
+-- 13. STATUS CODE CLASSES (2XX, 3XX, 4XX, 5XX)
+-- ============================================================================
+classified_status = FOREACH WebServerLogs GENERATE 
+    ((status_code >= 200 AND status_code <= 299) ? 'Success (2xx)' :
+     ((status_code >= 300 AND status_code <= 399) ? 'Redirection (3xx)' :
+      ((status_code >= 400 AND status_code <= 499) ? 'Client Error (4xx)' :
+       ((status_code >= 500 AND status_code <= 599) ? 'Server Error (5xx)' : 'UNKNOWN')))) AS types_of_codes;
+
+grp_status = GROUP classified_status BY types_of_codes;
+req_per_status = FOREACH grp_status GENERATE group AS types_of_codes, COUNT(classified_status) AS total_requests;
+DUMP req_per_status;
+
+ord_stat_desc = ORDER req_per_status BY total_requests DESC;
+top_2_status = LIMIT ord_stat_desc 2;
+DUMP top_2_status;
+
+ord_stat_asc = ORDER req_per_status BY total_requests ASC;
+least_2_status = LIMIT ord_stat_asc 2;
+DUMP least_2_status;
+
+-- ============================================================================
+-- 14 & 15. BROKEN LINKS (404) AND SERVER ERRORS (5XX)
+-- ============================================================================
+logs_404 = FILTER WebServerLogs BY status_code == 404;
+grp_404 = GROUP logs_404 BY request_url;
+count_404 = FOREACH grp_404 GENERATE group AS page, COUNT(logs_404) AS total;
+DUMP count_404;
+
+logs_5xx = FILTER WebServerLogs BY (status_code >= 500 AND status_code <= 599);
+grp_5xx = GROUP logs_5xx BY request_url;
+count_5xx = FOREACH grp_5xx GENERATE group AS page, COUNT(logs_5xx) AS total;
+ord_5xx = ORDER count_5xx BY total DESC;
+DUMP ord_5xx;
+
+-- ============================================================================
+-- 16. USER RESOURCE USAGE FILTERING (HAVING EQUIVALENT)
+-- ============================================================================
+grp_ip_bytes = GROUP WebServerLogs BY ip_address;
+user_resource = FOREACH grp_ip_bytes GENERATE group AS user_id, SUM(WebServerLogs.bytes_transferred) AS resource_used;
+
+heavy_users = FILTER user_resource BY resource_used >= 10240;
+DUMP heavy_users;
